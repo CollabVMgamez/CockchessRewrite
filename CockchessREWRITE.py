@@ -217,34 +217,42 @@ class EngineWorker(QThread):
                 self.done.emit((None, "No SF Path"))
                 return
             
-            eng = chess.engine.SimpleEngine.popen_uci(self.sf)
-            
-            # Analysis Stream for GUI updates
-            with eng.analysis(board, chess.engine.Limit(depth=22 if self.deep else 10)) as analysis:
-                for info in analysis:
-                    if info.get("depth", 0) > (22 if self.deep else 10): break
-                    
-                    sc = info["score"].relative
-                    eval_s = f"MATE {sc.mate()}" if sc.is_mate() else f"{sc.score()/100:.2f}"
-                    score_raw = 10000 if sc.is_mate() and sc.mate() > 0 else (-10000 if sc.is_mate() else sc.score())
-                    pv = " ".join([m.uci() for m in info.get("pv", [])[:3]])
-                    
-                    self.update.emit({"depth": info["depth"], "score": score_raw, "eval": eval_s, "nodes": info.get("nodes", 0), "pv": pv})
-            
-            # Play move
-            res = eng.play(board, chess.engine.Limit(time=0.1))
-            eng.quit()
-            self.done.emit((res.move, "Stockfish"))
+            try:
+                eng = chess.engine.SimpleEngine.popen_uci(self.sf)
+                
+                # Analysis Stream for GUI updates
+                with eng.analysis(board, chess.engine.Limit(depth=22 if self.deep else 10)) as analysis:
+                    for info in analysis:
+                        if info.get("depth", 0) > (22 if self.deep else 10): break
+                        
+                        # FIX: Check if 'score' exists before accessing it
+                        if "score" in info:
+                            sc = info["score"].relative
+                            eval_s = f"MATE {sc.mate()}" if sc.is_mate() else f"{sc.score()/100:.2f}"
+                            score_raw = 10000 if sc.is_mate() and sc.mate() > 0 else (-10000 if sc.is_mate() else sc.score())
+                            pv = " ".join([m.uci() for m in info.get("pv", [])[:3]])
+                            
+                            self.update.emit({"depth": info.get("depth",0), "score": score_raw, "eval": eval_s, "nodes": info.get("nodes", 0), "pv": pv})
+                
+                # Play move
+                res = eng.play(board, chess.engine.Limit(time=0.1))
+                eng.quit()
+                self.done.emit((res.move, "Stockfish"))
+            except Exception as e:
+                self.done.emit((None, f"SF Crash: {str(e)}"))
 
         elif self.mode == "ANALYZE":
             if self.sf:
-                eng = chess.engine.SimpleEngine.popen_uci(self.sf)
-                info = eng.analyse(board, chess.engine.Limit(time=1.0))
-                sc = info["score"].relative
-                eval_s = f"MATE {sc.mate()}" if sc.is_mate() else f"{sc.score()/100:.2f}"
-                pv = info["pv"][0].uci()
-                eng.quit()
-                self.done.emit((None, f"Best: {pv} | Eval: {eval_s}"))
+                try:
+                    eng = chess.engine.SimpleEngine.popen_uci(self.sf)
+                    info = eng.analyse(board, chess.engine.Limit(time=1.0))
+                    sc = info["score"].relative
+                    eval_s = f"MATE {sc.mate()}" if sc.is_mate() else f"{sc.score()/100:.2f}"
+                    pv = info["pv"][0].uci()
+                    eng.quit()
+                    self.done.emit((None, f"Best: {pv} | Eval: {eval_s}"))
+                except Exception as e:
+                    self.done.emit((None, f"SF Err: {str(e)}"))
             else:
                 self.done.emit((None, "Load Stockfish for Analysis."))
 
@@ -259,6 +267,7 @@ class EvalBar(QWidget):
 
     def set_val(self, score):
         # Clamp -1000 to 1000
+        if score is None: score = 0
         v = max(-1000, min(1000, score))
         self.pct = (v + 1000) / 2000
         self.update()
@@ -298,7 +307,7 @@ class MainWindow(QMainWindow):
                 break
 
     def init_ui(self):
-        self.setWindowTitle("Cockchess: Unified Edition")
+        self.setWindowTitle("Cockchess: Unified Edition (Stable)")
         self.setGeometry(100, 100, 1300, 900)
         self.setStyleSheet("background-color: #181818; color: #ddd; font-family: Consolas;")
 
@@ -316,7 +325,7 @@ class MainWindow(QMainWindow):
         panel.setStyleSheet("background-color: #222; border-radius: 8px;")
         pl = QVBoxLayout(panel)
         
-        pl.addWidget(QLabel("<h1>COCKCHESS UNIFIED</h1>"))
+        pl.addWidget(QLabel("<h1>COCKCHESS STABLE</h1>"))
         
         # -- SETUP --
         btn_sf = QPushButton("📂 Load Stockfish")
