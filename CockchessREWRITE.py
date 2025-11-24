@@ -3,36 +3,34 @@ import chess
 import chess.svg
 import chess.engine
 import chess.pgn
+import chess.polyglot
 import time
 import os
-import pyperclip
 import math
-
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QLabel, QPushButton, QFileDialog, QComboBox, QMessageBox, 
-    QFrame, QTextEdit, QCheckBox, QInputDialog, QSplitter, QSlider
-)
+import pyperclip
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                             QHBoxLayout, QLabel, QPushButton, QFileDialog, 
+                             QComboBox, QMessageBox, QFrame, QTextEdit, 
+                             QCheckBox, QInputDialog, QSlider)
 from PyQt5.QtSvg import QSvgWidget
 from PyQt5.QtCore import pyqtSlot, QThread, pyqtSignal, Qt, QByteArray, QTimer
-from PyQt5.QtGui import QPainter, QColor, QFont
+from PyQt5.QtGui import QPainter, QColor
 
-# ============================================================================
-#  PART 1: THE INTERNAL BRAIN (PURE PYTHON 2400 ELO LOGIC)
-# ============================================================================
+# =============================================================================
+#  THE BRAIN: TITAN SLAYER LOGIC (ADVANCED PYTHON ENGINE)
+# =============================================================================
 
-class CockchessBrain:
+class TitanBrain:
     """
-    The internal engine logic. Uses PeSTO evaluation, 
-    Alpha-Beta Pruning, PVS, and Transposition Tables.
+    The Titan Slayer Engine.
+    Uses PVS, Null Move Pruning, LMR, Killer Heuristic, and Tapered Eval.
     """
-    
-    # --- EVALUATION CONSTANTS ---
+    # --- CONSTANTS ---
     MATE_SCORE = 90000
-    INFINITY = 99999
-
-    # --- PeSTO PIECE-SQUARE TABLES (MiddleGame & EndGame) ---
-    # These tables tell the engine exactly where pieces should go.
+    INF = 99999
+    
+    # --- PeSTO PIECE-SQUARE TABLES (THE GOLD STANDARD) ---
+    # [Middlegame, Endgame] values for every square.
     
     mg_pawn = [
         0,   0,   0,   0,   0,   0,   0,   0,
@@ -44,7 +42,6 @@ class CockchessBrain:
       -35,  -1, -20, -23, -15,  24,  38, -22,
         0,   0,   0,   0,   0,   0,   0,   0
     ]
-
     eg_pawn = [
         0,   0,   0,   0,   0,   0,   0,   0,
       178, 173, 158, 134, 147, 132, 165, 187,
@@ -55,7 +52,6 @@ class CockchessBrain:
        13,   8,   8,  10,  13,   0,   2,  -7,
         0,   0,   0,   0,   0,   0,   0,   0
     ]
-
     mg_knight = [
      -167, -89, -34, -49,  61, -97, -15, -107,
       -73, -41,  72,  36,  23,  62,   7,  -17,
@@ -66,7 +62,6 @@ class CockchessBrain:
       -29, -53, -12,  -3,  -1,  18, -14,  -19,
      -105, -21, -58, -33, -17, -28, -19,  -23
     ]
-
     eg_knight = [
       -58, -38, -13, -28, -31, -27, -63, -99,
       -25,  -8, -25,  -2,  -9, -25, -24, -52,
@@ -77,7 +72,6 @@ class CockchessBrain:
       -42, -20, -10,  -5,  -2, -20, -23, -44,
       -29, -51, -23, -15, -22, -18, -50, -64
     ]
-
     mg_bishop = [
       -29,   4, -82, -37, -25, -42,   7,  -8,
       -26,  16, -18, -13,  30,  59,  18, -47,
@@ -88,7 +82,6 @@ class CockchessBrain:
         4,  15,  16,   9,  23,  29,  24,   9,
       -20, -21, -46, -14,  -9, -21,   6,   8
     ]
-
     eg_bishop = [
       -14, -21, -11,  -8,  -7,  -9, -17, -24,
        -8,  -4,   7, -12,  -3, -13,  -4, -14,
@@ -99,7 +92,6 @@ class CockchessBrain:
       -13,  -5,  -5,  -6,  -7,  -4,  -7, -13,
       -23, -10, -11,  -8,  -6, -11,  -1,   0
     ]
-
     mg_rook = [
        32,  42,  32,  51,  63,   9,  31,  43,
        27,  32,  58,  62,  80,  55,  54,  15,
@@ -110,7 +102,6 @@ class CockchessBrain:
       -44, -16, -20,  -9,  -1,  11,  -6, -71,
       -19, -13,   1,  17,  16,   7, -37, -26
     ]
-
     eg_rook = [
        13,  10,  18,  15,  12,  12,   8,   5,
        11,  13,  13,  11,  12,  12,   4,   4,
@@ -121,7 +112,6 @@ class CockchessBrain:
         5,  -1,   0,   1,   1,  -1,   1,   9,
        -9,  -1,  -3,  -1,   0,  -2,  -3, -22
     ]
-
     mg_queen = [
       -28,   0,  29,  12,  59,  44,  43,  45,
       -24, -39,  -5,  -9,  11,  59,  31,  78,
@@ -132,7 +122,6 @@ class CockchessBrain:
       -35,  -8,  11,   2,   8,  15,  13,   1,
        -2,  22,  -8,  -4, -13,  23,  30, -13
     ]
-
     eg_queen = [
        -9,  22,  22,  27,  27,  19,  10,  20,
       -17,  20,  32,  41,  58,  25,  30,   0,
@@ -143,7 +132,6 @@ class CockchessBrain:
       -22, -23, -30, -16, -16, -23, -36, -32,
       -33, -28, -22, -43,  -5, -32, -20, -41
     ]
-
     mg_king = [
       -65,  23,  16, -15, -56, -34,   2,  13,
        29,  -1, -20,  -7,  -8,  -4, -38, -29,
@@ -154,7 +142,6 @@ class CockchessBrain:
         1,   7,  -8, -64, -43, -16,   9,   8,
       -15,  36,  12, -54,   8, -28,  24,  14
     ]
-
     eg_king = [
       -74, -35, -18, -18, -11,  15,   4, -17,
       -12,  17,  14,  17,  17,  38,  23,  11,
@@ -167,12 +154,16 @@ class CockchessBrain:
     ]
 
     def __init__(self):
-        self.tt = {}
-        self.killers = [[None] * 2 for _ in range(64)]
-        self.history = [[0] * 64 for _ in range(64)]
+        self.tt = {} # Transposition Table (Memory)
+        self.killers = [[None] * 2 for _ in range(64)] # Killer Moves
+        self.history = [[0] * 64 for _ in range(64)]   # History Heuristic
         self.nodes = 0
 
     def evaluate(self, board):
+        """
+        Calculates score based on Material, Position, and Phase.
+        Positive = White Advantage, Negative = Black Advantage.
+        """
         if board.is_checkmate():
             return -self.MATE_SCORE if board.turn else self.MATE_SCORE
         if board.is_stalemate() or board.is_insufficient_material():
@@ -182,12 +173,12 @@ class CockchessBrain:
         eg_score = 0
         phase = 0
 
-        # Evaluate every piece
+        # Loop through all pieces to calculate score
         for sq in chess.SQUARES:
             p = board.piece_at(sq)
             if not p: continue
             
-            # Flip index for white to match table orientation
+            # Index flip for white to match table layout
             idx = sq ^ 56 if p.color == chess.WHITE else sq
             pt = p.piece_type
             
@@ -213,31 +204,43 @@ class CockchessBrain:
                 mg_score -= (mat + mg)
                 eg_score -= (mat + eg)
 
-        # Tapered Evaluation (Interpolate based on game phase)
+        # Tapered Eval: Interpolate between Middlegame and Endgame based on 'phase'
         phase = min(phase, 24)
         score = ((mg_score * phase) + (eg_score * (24 - phase))) / 24
         
+        # Return score relative to side to move
         return int(score) if board.turn == chess.WHITE else int(-score)
 
     def score_move(self, board, move, depth):
-        # Move Ordering: Critical for speed
+        """
+        Move Ordering: Critical for Alpha-Beta Pruning efficiency.
+        1. Captures (Most Valuable Victim - Least Valuable Attacker)
+        2. Checks
+        3. Killer Moves
+        4. History Heuristic
+        """
         if board.is_capture(move):
             victim = board.piece_at(move.to_square)
             val = 0
             if victim:
                 val = {1:1, 2:3, 3:3, 4:5, 5:9, 6:0}.get(victim.piece_type, 0)
-            return 10000 + val * 10
+            attacker = board.piece_at(move.from_square).piece_type
+            return 10000 + (val * 10) - attacker # MVV-LVA
         
         if board.gives_check(move):
-            return 5000
+            return 9000
             
         if depth < 64:
-            if self.killers[depth][0] == move: return 9000
-            if self.killers[depth][1] == move: return 8000
+            if self.killers[depth][0] == move: return 8000
+            if self.killers[depth][1] == move: return 7000
             
+        # History Heuristic (0 to ~1000)
         return self.history[move.from_square][move.to_square]
 
     def quiescence(self, board, alpha, beta, start, limit):
+        """
+        Search only captures to avoid the horizon effect.
+        """
         self.nodes += 1
         if (self.nodes & 2047) == 0:
             if time.time() - start > limit: raise TimeoutError
@@ -246,7 +249,7 @@ class CockchessBrain:
         if stand_pat >= beta: return beta
         if alpha < stand_pat: alpha = stand_pat
 
-        # Only search captures in Quiescence
+        # Only look at captures
         moves = sorted(
             [m for m in board.legal_moves if board.is_capture(m)], 
             key=lambda m: self.score_move(board, m, 0), 
@@ -257,11 +260,15 @@ class CockchessBrain:
             board.push(move)
             score = -self.quiescence(board, -beta, -alpha, start, limit)
             board.pop()
+            
             if score >= beta: return beta
             if score > alpha: alpha = score
         return alpha
 
     def negamax(self, board, depth, alpha, beta, start, limit):
+        """
+        The Main Search Function.
+        """
         self.nodes += 1
         if (self.nodes & 2047) == 0:
             if time.time() - start > limit: raise TimeoutError
@@ -287,14 +294,14 @@ class CockchessBrain:
             board.pop()
             if score >= beta: return beta
 
-        # Move Ordering
+        # Sort moves
         moves = sorted(
             board.legal_moves, 
             key=lambda m: self.score_move(board, m, depth), 
             reverse=True
         )
         
-        max_score = -self.INFINITY
+        max_score = -self.INF
         best_move = None
 
         for i, move in enumerate(moves):
@@ -314,9 +321,8 @@ class CockchessBrain:
                     
                     score = -self.negamax(board, depth - 1 + ext - reduction, -alpha - 1, -alpha, start, limit)
                     
-                    if reduction > 0 and score > alpha:
-                        score = -self.negamax(board, depth - 1 + ext, -beta, -alpha, start, limit)
-                    elif score > alpha and score < beta:
+                    # Re-search if LMR failed or PVS failed (score > alpha)
+                    if score > alpha:
                         score = -self.negamax(board, depth - 1 + ext, -beta, -alpha, start, limit)
                         
             except TimeoutError:
@@ -329,24 +335,28 @@ class CockchessBrain:
                 max_score = score
                 best_move = move
             
-            alpha = max(alpha, score)
+            if score > alpha:
+                alpha = score
+            
             if alpha >= beta:
-                # Beta Cutoff (Store Killers & History)
+                # Beta Cutoff: Update Killers & History
                 if not board.is_capture(move) and depth < 64:
                     self.killers[depth][1] = self.killers[depth][0]
                     self.killers[depth][0] = move
                     self.history[move.from_square][move.to_square] += depth * depth
                 
+                # Store in TT (Lower Bound)
                 self.tt[key] = {'d': depth, 's': max_score, 'f': 2, 'm': best_move}
                 return max_score
 
+        # Store in TT (Exact or Upper Bound)
         flag = 0 if max_score > alpha else 1
         self.tt[key] = {'d': depth, 's': max_score, 'f': flag, 'm': best_move}
         return max_score
 
-# ============================================================================
-#  PART 2: WORKER THREAD (HANDLES STOCKFISH & INTERNAL)
-# ============================================================================
+# =============================================================================
+#  PART 2: WORKER THREAD (HANDLES ENGINE SELECTION)
+# =============================================================================
 
 class EngineWorker(QThread):
     update = pyqtSignal(dict)
@@ -367,15 +377,15 @@ class EngineWorker(QThread):
         if self.mode == "INTERNAL":
             self.brain.nodes = 0
             self.brain.tt.clear()
-            self.brain.history = [[0]*64 for _ in range(64)]
             self.brain.killers = [[None]*2 for _ in range(64)]
+            self.brain.history = [[0]*64 for _ in range(64)]
             
             start = time.time()
-            limit = 30.0 if self.deep else 2.5
+            limit = 30.0 if self.deep else 3.0
             best = list(board.legal_moves)[0]
-            max_d = 30 if self.deep else 8
             
             # Iterative Deepening
+            # Go deeper step by step to ensure we always have a best move
             for d in range(1, 100):
                 if time.time() - start > limit: break
                 
@@ -411,10 +421,10 @@ class EngineWorker(QThread):
                             "pv": best.uci()
                         })
                         
-                        if abs(alpha) > 80000: break # Mate found, stop searching
+                        if abs(alpha) > 80000: break # Mate found
 
                 except TimeoutError:
-                    break # Time limit hit, exit loop
+                    break
             
             self.done.emit((best, "Cockchess (Internal)"))
 
@@ -427,19 +437,21 @@ class EngineWorker(QThread):
             try:
                 eng = chess.engine.SimpleEngine.popen_uci(self.sf)
                 
-                # God Mode Configuration
+                # 3400+ ELO CONFIGURATION
                 if self.deep:
+                    # God Mode: High RAM, High Threads, High Depth
                     eng.configure({"Threads": 4, "Hash": 512})
-                    target_depth = 24
+                    target_depth = 26
                 else:
-                    eng.configure({"Threads": 1, "Hash": 64})
+                    # Instant 3000: Fast but strong
+                    eng.configure({"Threads": 2, "Hash": 64})
                     target_depth = 18
                 
                 with eng.analysis(board, chess.engine.Limit(depth=target_depth)) as analysis:
                     for info in analysis:
                         if info.get("depth", 0) > target_depth: break
                         
-                        # Robust checking for keys
+                        # Safety check for score
                         if "score" in info:
                             sc = info["score"].relative
                             
@@ -488,22 +500,22 @@ class EngineWorker(QThread):
             else:
                 self.done.emit((None, "Load SF First"))
 
-# ============================================================================
-#  PART 3: GUI & MAIN WINDOW
-# ============================================================================
+# =============================================================================
+#  PART 3: GUI
+# =============================================================================
 
 class EvalBar(QWidget):
-    """Custom widget to draw the Evaluation Bar on the left."""
+    """Evaluation Bar Widget (Visualizes advantage)"""
     def __init__(self):
         super().__init__()
-        self.setFixedWidth(35)
+        self.setFixedWidth(30)
         self.pct = 0.5
 
     def set_val(self, score):
         if score is None: score = 0
-        # Clamp score between -1000 and 1000 centipawns for display
+        # Clamp between -1000 and 1000 centipawns
         v = max(-1000, min(1000, score))
-        # Normalize to 0.0 - 1.0
+        # Normalize
         self.pct = (v + 1000) / 2000
         self.update()
 
@@ -511,154 +523,123 @@ class EvalBar(QWidget):
         p = QPainter(self)
         h = self.height()
         w = self.width()
-        
-        # Background (Black advantage)
-        p.fillRect(0, 0, w, h, QColor("#333333"))
-        
-        # Foreground (White advantage)
+        # Background (Black wins)
+        p.fillRect(0, 0, w, h, QColor("#333"))
+        # Foreground (White wins)
         wh = int(h * self.pct)
-        # Draw from bottom up
-        p.fillRect(0, h - wh, w, wh, QColor("#eeeeee"))
-        
-        # Middle Marker
-        p.setPen(QColor("#ff0000"))
-        p.drawLine(0, h//2, w, h//2)
+        p.fillRect(0, h - wh, w, wh, QColor("#eee"))
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.board = chess.Board()
-        self.brain = CockchessBrain()
+        self.brain = TitanBrain()
         self.pgn = chess.pgn.Game()
         self.node = self.pgn
         self.sf = None
         self.selected = None
         self.thinking = False
-        self.mode = "HvC" # Human vs Cockchess
+        self.mode = "HvC"
         
         self.init_ui()
         self.find_sf_auto()
         self.refresh()
 
     def find_sf_auto(self):
-        """Auto-detect Stockfish in current folder."""
+        """Auto-detect stockfish"""
         for f in os.listdir("."):
             if "stockfish" in f.lower() and f.endswith(".exe"):
                 self.sf = os.path.abspath(f)
                 self.lbl_sf.setText("SF: READY")
-                self.lbl_sf.setStyleSheet("color: #00ff00; font-weight: bold")
-                self.log.append(f"Auto-Loaded: {f}")
+                self.lbl_sf.setStyleSheet("color: #0f0; font-weight: bold")
                 break
 
     def init_ui(self):
-        self.setWindowTitle("Cockchess: Titan Edition (Fixed)")
+        self.setWindowTitle("Cockchess: Titan Slayer Edition")
         self.setGeometry(100, 100, 1300, 900)
-        self.setStyleSheet("background-color: #181818; color: #dddddd; font-family: Consolas;")
+        self.setStyleSheet("background-color: #181818; color: #ddd; font-family: Consolas;")
 
-        # --- MAIN LAYOUT ---
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
 
-        # 1. Eval Bar
         self.bar = EvalBar()
         layout.addWidget(self.bar)
 
-        # 2. Chess Board
         self.svg = QSvgWidget()
         self.svg.setFixedSize(800, 800)
         layout.addWidget(self.svg)
 
-        # 3. Control Panel
         panel = QFrame()
         panel.setFixedWidth(400)
-        panel.setStyleSheet("background-color: #222222; border-radius: 8px; padding: 5px;")
+        panel.setStyleSheet("background-color: #222; border-radius: 8px; padding: 5px;")
         pl = QVBoxLayout(panel)
         
-        # Header
-        lbl_title = QLabel("<h1>COCKCHESS TITAN</h1>")
-        lbl_title.setStyleSheet("color: #CDD26A;")
-        pl.addWidget(lbl_title)
+        pl.addWidget(QLabel("<h1>COCKCHESS TITAN</h1>"))
         
-        # Engine Settings
-        pl.addWidget(QLabel("<b>ENGINE CONFIGURATION:</b>"))
-        
-        btn_sf = QPushButton("📂 Load Stockfish (.exe)")
+        # Settings
+        btn_sf = QPushButton("📂 Load Stockfish")
         btn_sf.clicked.connect(self.load_sf)
-        btn_sf.setStyleSheet("background-color: #333; padding: 5px;")
         pl.addWidget(btn_sf)
         
-        self.lbl_sf = QLabel("Stockfish: NOT LOADED")
-        self.lbl_sf.setStyleSheet("color: #ff5555")
+        self.lbl_sf = QLabel("SF: Missing")
+        self.lbl_sf.setStyleSheet("color: #f55")
         pl.addWidget(self.lbl_sf)
         
         self.combo = QComboBox()
         self.combo.addItems(["Human vs Cockchess", "Human vs Stockfish", "Cockchess vs Stockfish"])
         self.combo.currentIndexChanged.connect(self.chg_mode)
-        self.combo.setStyleSheet("background-color: #333; padding: 5px;")
+        self.combo.setStyleSheet("background: #333; padding: 5px;")
         pl.addWidget(self.combo)
         
-        self.chk = QCheckBox("🚀 Deep Mode (God Level)")
-        self.chk.setStyleSheet("color: #00E676; font-weight: bold;")
+        self.chk = QCheckBox("🚀 Deep Mode (3500+)")
+        self.chk.setStyleSheet("color: #CDD26A; font-weight: bold;")
         pl.addWidget(self.chk)
         
-        pl.addSpacing(10)
-        
-        # Controls
-        pl.addWidget(QLabel("<b>GAME CONTROLS:</b>"))
-        row_ctrl = QHBoxLayout()
-        self.btn_sim = QPushButton("Start Simulation")
+        # Actions
+        row = QHBoxLayout()
+        self.btn_sim = QPushButton("Start Sim")
         self.btn_sim.clicked.connect(self.run_bot)
-        self.btn_sim.setStyleSheet("background-color: #d32f2f; color: white;")
+        self.btn_sim.setStyleSheet("background: #d32f2f")
         self.btn_sim.hide()
         
-        btn_rst = QPushButton("Reset Game")
+        btn_rst = QPushButton("Reset")
         btn_rst.clicked.connect(self.reset)
-        btn_rst.setStyleSheet("background-color: #444;")
         
-        row_ctrl.addWidget(btn_rst)
-        row_ctrl.addWidget(self.btn_sim)
-        pl.addLayout(row_ctrl)
-
-        # PGN Tools
-        row_pgn = QHBoxLayout()
-        btn_pgn = QPushButton("PGN")
-        btn_pgn.clicked.connect(self.ex_pgn)
-        btn_fen = QPushButton("Copy FEN")
-        btn_fen.clicked.connect(self.cp_fen)
-        btn_imp = QPushButton("Paste FEN")
-        btn_imp.clicked.connect(self.ps_fen)
+        row.addWidget(btn_rst)
+        row.addWidget(self.btn_sim)
+        pl.addLayout(row)
         
-        for b in [btn_pgn, btn_fen, btn_imp]:
-            b.setStyleSheet("background-color: #333;")
-            row_pgn.addWidget(b)
-        pl.addLayout(row_pgn)
+        # Tools
+        t = QHBoxLayout()
+        b1 = QPushButton("PGN"); b1.clicked.connect(self.ex_pgn)
+        b2 = QPushButton("FEN"); b2.clicked.connect(self.cp_fen)
+        b3 = QPushButton("Paste"); b3.clicked.connect(self.ps_fen)
+        t.addWidget(b1); t.addWidget(b2); t.addWidget(b3)
+        pl.addLayout(t)
         
-        # Coach
-        btn_coach = QPushButton("🧠 Ask Coach (Best Move)")
-        btn_coach.setStyleSheet("background-color: #0277BD; font-weight: bold; color: white;")
-        btn_coach.clicked.connect(self.analyze)
-        pl.addWidget(btn_coach)
-
+        btn_c = QPushButton("Ask Coach")
+        btn_c.setStyleSheet("background: #0277BD")
+        btn_c.clicked.connect(self.analyze)
+        pl.addWidget(btn_c)
+        
+        # Stats
         pl.addSpacing(15)
-
-        # Stats Display
         self.lbl_e = QLabel("Eval: 0.00")
-        self.lbl_e.setStyleSheet("font-size: 24px; font-weight: bold; color: #fff;")
+        self.lbl_e.setStyleSheet("font-size: 22px; font-weight: bold")
         pl.addWidget(self.lbl_e)
         
-        self.lbl_i = QLabel("Depth: 0 | Nodes: 0")
+        self.lbl_i = QLabel("D: 0 | N: 0")
         pl.addWidget(self.lbl_i)
         
         self.lbl_p = QLabel("Line: ...")
         self.lbl_p.setWordWrap(True)
-        self.lbl_p.setStyleSheet("color: #CDD26A; font-style: italic;")
+        self.lbl_p.setStyleSheet("color: #CDD26A; font-style: italic")
         pl.addWidget(self.lbl_p)
-
-        # Log
+        
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setStyleSheet("background-color: #000; font-size: 11px; border: 1px solid #444;")
+        self.log.setStyleSheet("background: #000; font-size: 11px")
         pl.addWidget(self.log)
 
         layout.addWidget(panel)
@@ -669,12 +650,11 @@ class MainWindow(QMainWindow):
         if f:
             self.sf = f
             self.lbl_sf.setText("SF: READY")
-            self.lbl_sf.setStyleSheet("color: #00ff00; font-weight: bold")
+            self.lbl_sf.setStyleSheet("color: #0f0")
 
     def chg_mode(self):
         self.mode = ["HvC", "HvS", "CvS"][self.combo.currentIndex()]
-        if self.mode == "CvS": self.btn_sim.show()
-        else: self.btn_sim.hide()
+        self.btn_sim.setVisible(self.mode == "CvS")
         self.reset()
 
     def reset(self):
@@ -684,59 +664,39 @@ class MainWindow(QMainWindow):
         self.brain.tt.clear()
         self.log.clear()
         self.bar.set_val(0)
-        self.lbl_e.setText("Eval: 0.00")
         self.refresh()
 
-    def ex_pgn(self):
-        pyperclip.copy(str(self.pgn))
-        self.log.append("PGN Copied to Clipboard.")
-
-    def cp_fen(self):
-        pyperclip.copy(self.board.fen())
-        self.log.append("FEN Copied to Clipboard.")
-
+    def ex_pgn(self): pyperclip.copy(str(self.pgn)); self.log.append("PGN Copied")
+    def cp_fen(self): pyperclip.copy(self.board.fen()); self.log.append("FEN Copied")
     def ps_fen(self):
         t, o = QInputDialog.getText(self, "Import", "Paste FEN:")
         if o and t:
             try:
                 self.board.set_fen(t)
                 self.refresh()
-                self.log.append("FEN Loaded Successfully.")
-            except:
-                self.log.append("Error: Invalid FEN.")
+                self.log.append("FEN Loaded")
+            except: self.log.append("Bad FEN")
 
     def refresh(self):
         f = {}
-        # Highlights
         if self.selected:
-            f[self.selected] = "#ffff00aa" # Yellow selection
+            f[self.selected] = "#ffff00aa"
             for m in self.board.legal_moves:
                 if m.from_square == self.selected:
-                    f[m.to_square] = "#00ff0066" # Green targets
-        
+                    f[m.to_square] = "#00ff0066"
         arr = []
         if self.board.move_stack:
             m = self.board.peek()
             arr = [chess.svg.Arrow(m.from_square, m.to_square, color="#CDD26Aaa")]
-        
         if self.board.is_check():
-            f[self.board.king(self.board.turn)] = "#ff0000cc" # Red Check
-
-        d = chess.svg.board(
-            self.board, 
-            size=800, 
-            fill=f, 
-            arrows=arr, 
-            colors={'square light': '#e0c094', 'square dark': '#8a5d3b'}
-        )
+            f[self.board.king(self.board.turn)] = "#ff0000cc"
+        
+        d = chess.svg.board(self.board, size=800, fill=f, arrows=arr, colors={'square light': '#e0c094', 'square dark': '#8a5d3b'})
         self.svg.load(QByteArray(d.encode('utf-8')))
 
     def click_board(self, e):
         if self.thinking or self.mode == "CvS": return
-        
-        w = self.svg.width()
-        h = self.svg.height()
-        sq = chess.square(int(e.x() // (w/8)), 7 - int(e.y() // (h/8)))
+        sq = chess.square(int(e.x()//100), 7-int(e.y()//100))
         
         if self.selected is None:
             p = self.board.piece_at(sq)
@@ -745,7 +705,6 @@ class MainWindow(QMainWindow):
                 self.refresh()
         else:
             m = chess.Move(self.selected, sq)
-            # Auto-Queen
             if self.board.piece_at(self.selected).piece_type == chess.PAWN and chess.square_rank(sq) in [0, 7]:
                 m.promotion = chess.QUEEN
             
@@ -754,16 +713,9 @@ class MainWindow(QMainWindow):
                 self.node = self.node.add_variation(m)
                 self.selected = None
                 self.refresh()
-                
-                if not self.board.is_game_over():
-                    self.run_bot()
+                if not self.board.is_game_over(): self.run_bot()
             else:
-                # Deselect or switch piece
-                p = self.board.piece_at(sq)
-                if p and p.color == self.board.turn:
-                    self.selected = sq
-                else:
-                    self.selected = None
+                self.selected = sq if self.board.piece_at(sq) and self.board.piece_at(sq).color == self.board.turn else None
                 self.refresh()
 
     def run_bot(self):
@@ -782,12 +734,6 @@ class MainWindow(QMainWindow):
     def upd(self, d):
         self.bar.set_val(d['score'])
         self.lbl_e.setText(f"Eval: {d['eval']}")
-        
-        if "MATE" in d['eval']:
-            self.lbl_e.setStyleSheet("color: #00ff00; font-size: 26px; font-weight: bold;")
-        else:
-            self.lbl_e.setStyleSheet("color: #fff; font-size: 24px; font-weight: bold;")
-            
         self.lbl_i.setText(f"D: {d['depth']} | N: {d['nodes']}")
         self.lbl_p.setText(d['pv'])
 
@@ -801,7 +747,7 @@ class MainWindow(QMainWindow):
             self.log.append(f"{t}: {m.uci()}")
             
             if self.board.is_checkmate():
-                QMessageBox.information(self, "Game Over", f"Checkmate! {self.board.result()}")
+                QMessageBox.information(self, "Game Over", "Checkmate!")
             
             if self.mode == "CvS" and not self.board.is_game_over():
                 QTimer.singleShot(200, self.run_bot)
